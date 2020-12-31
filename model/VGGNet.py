@@ -15,7 +15,7 @@ cfg = {
 }
 
 
-
+# VGGNet
 class VGGNet(nn.Module):
     def __init__(self, vgg_name, num_classes=1000, init_weighs=True):
         super(VGGNet, self).__init__()
