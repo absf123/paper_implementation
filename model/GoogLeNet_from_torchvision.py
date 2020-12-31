@@ -319,9 +319,6 @@ if __name__ == "__main__":
     from torchsummary import summary
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    net = GoogLeNet(num_classes=1000, aux_logits=True, transform_input=False, init_weights=None, blocks=None).to(device)
+    net = GoogLeNet(num_classes=1000).to(device)
     summary(net, (3, 224, 224), 30)
 
-# 하긴 했는데, 좀 더 simple 하게 할 수 없을까...?
-# code 출처 : https://paperswithcode.com/method/googlenet
-# 12.31에 다시 공부

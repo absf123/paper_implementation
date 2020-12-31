@@ -1,17 +1,188 @@
 # https://github.com/jhcha08/Implementation_DeepLearningPaper/blob/master/%EC%8A%A4%ED%84%B0%EB%94%94%2020200205%20-%20CNN.%20Inception.ipynb
+# 일단 auxiliary classifier는 제외하고 구현해보자... -> torchvision에서  GoogLeNetOutputs 이런 요소 없이 구현하고 싶음 (이 부분을 이해못했음)
+# 위에 코드에서 aux2 위치가 잘 못 들어간거 같긴한데, 크게 문제될지는 모르겠음 -> 어차피 aux1,2 출력만하지 사용할지 안할지는 현재 구현이 제대로 안되어있음
+# 일단 해결
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import numpy
+import warnings
 
 # GoogLeNet
 class GoogLeNet(nn.Module):
-    def __init__(self, num_classes=1000, initail):
+    def __init__(self, num_classes=1000, aux_logits=True, transform_input=False, init_weights=True, blocks=None):
+        super(GoogLeNet, self).__init__()
+        if blocks is None:
+            # 정의된 3개의 block 가져오기
+            blocks = [BasicConv2d, Inception_module, InceptionAux]
+        if init_weights is None:
+            # True : 구 버전 가중치 초기화, False : 최신 버전 가중치 초기화
+            warnings.warn('The default weight initialization of GoogleNet will be changed in future releases of \
+                             torchvision. If you wish to keep the old behavior (which leads to long initialization times due to scipy/scipy#11299), please set init_weights=True.',
+                          FutureWarning)
+            init_weights = True
 
+        assert len(blocks) == 3
+        conv_block = blocks[0]  # BasicConv2
+        inception_block = blocks[1]  # Inception_block
+        inception_aux_block = blocks[2]  # InceptionAux
 
+        self.auc_logits = aux_logits
+        self.transfor_input = transform_input
 
+        self.conv1 = conv_block(3, 64, kernel_size=7, stride=2, padding=3)
+        # ceil_mode = True : 천장함수 이용
+        self.maxpool1 = nn.MaxPool2d(3, stride=2, ceil_mode=True)
+        self.conv2 = conv_block(64, 64, kernel_size=1)
+        self.conv3 = conv_block(64, 192, kernel_size=1, padding=1)
+        self.maxpool2 = nn.MaxPool2d(3, stride=2, ceil_mode=True)
+
+        self.inception3a = inception_block(192, 64, 96, 128, 16, 32, 32)
+        self.inception3b = inception_block(256, 128, 128, 192, 32, 96, 64)
+        self.maxpool3 = nn.MaxPool2d(3, stride=2, ceil_mode=True)
+
+        self.inception4a = inception_block(480, 192, 96, 208, 16, 48, 64)
+        self.inception4b = inception_block(512, 160, 112, 224, 24, 64, 64)
+        self.inception4c = inception_block(512, 128, 128, 256, 24, 64, 64)
+        self.inception4d = inception_block(512, 112, 144, 288, 32, 64, 64)
+        self.inception4e = inception_block(528, 256, 160, 320, 32, 128, 128)
+        self.maxpool4 = nn.MaxPool2d(3, stride=2, ceil_mode=True)  # 왜 2x2? 일단 3x3으로 적음
+
+        self.inception5a = inception_block(832, 256, 160, 320, 32, 128, 128)
+        self.inception5b = inception_block(832, 384, 192, 384, 48, 128, 128)
+
+        if aux_logits:
+            self.aux1 = inception_aux_block(512, num_classes)
+            self.aux2 = inception_aux_block(528, num_classes)
+        else:
+            self.aux1 = None
+            self.aux2 = None
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.dropout = nn.Dropout(0.4)
+        self.fc = nn.Linear(1024, num_classes)
+
+        if init_weights:
+            self._initialize_weights()
+
+        # 가중치 초기화 -> 논문에 있는 건가?
+
+    def _initialize_weights(self):
+        for m in self.modules():
+            # isinstance(인스터스, class/data type) 함수로 특정 class/data type인지 확인
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+                import scipy.stats as stats
+                # truncated normal distribution 생성
+                X = stats.truncnorm(-2, 2, scale=0.01)
+
+                # torch.as_tensor(data) data를 dtype tensor로 변환
+                # .numel()는 입력 tensor의 전체 수를 반환
+                # .rvs는 랜덤 표본 생성하는 사이킷런 함수
+                values = torch.as_tensor(X.rvs(m.weight.numel()), dtype=m.weight.dtype)
+
+                # value의 차원을 m.weight.size로 변경
+                values = values.view(m.weight.size())
+
+                with torch.no_grad():
+                    m.weight.copy_(values)
+
+            # BatchNorm2d에서는 weight=1, bias=0으로 설정
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+    def _transform_input(self, x):
+        # type: #(Tensor) -> Tensor
+        if self.transform_input:
+            # unsqueeze(input, dimp) input을 dim 차원으로 변경
+            x_ch0 = torch.unsqueeze(x[:, 0], 1) * (0.229 / 0.5) * (0.485 - 0.5) / 0.5
+            x_ch1 = torch.unsqueeze(x[:, 1], 1) * (0.224 / 0.5) * (0.456 - 0.5) / 0.5
+            x_ch2 = torch.unsqueeze(x[:, 2], 1) * (0.225 / 0.5) * (0.406 - 0.5) / 0.5
+            # x를 하나로 통합
+            x = torch.cat((x_ch0, x_ch1, x_ch2), 1)
+        return x
+
+    def forward(self, x):
+        # 원래 이 forward는 _forward로 정의되어있었고, 밑에 forward에 있던 transform_input을 가져옴
+        #  -> pre_trained 부분 때문에 이걸 직접적으로 forward로 사용했기때문에 여기에 transform_input선언
+        # x = self._transform_input(x)  # 왜 안돌아갈까...
+        # type: #(Tensor) -> Tensor
+        # N x 3 x 224 x 224
+        x = self.conv1(x)
+        # N x 64 x 112 x 112
+        x = self.conv2(x)
+        # N x 64 x 56 x 56
+        x = self.conv3(x)
+        # N x 192 x 56 x 56
+        x = self.maxpool2(x)
+
+        # N x 192 x 26 x 26
+        x = self.inception3a(x)
+        # N x 256 x 26 x 26
+        x = self.inception3b(x)
+        # N x 460 x 26 x 26
+        x = self.maxpool3(x)
+        # N x 460 x 26 x 26
+        x = self.inception4a(x)
+        # N x 512 x 14 x 14
+
+        # torch.jit.annotate(Optional[Tensor], None)
+        # aux1 = torch.jit.annotate(Optional[Tensor], None) # ??
+        if self.aux1 is not None:
+            # training에서만 aux1 적용
+            if self.training:
+                aux1 = self.aux1(x)
+
+        x = self.inception4b(x)
+        # N x 512 x 14 x 14
+        x = self.inception4c(x)
+        # N x 512 x 14 x 14
+        x = self.inception4d(x)
+        # N x 528 x 14 x 14
+        # aux2 = torch.jit.annotate(Optional[Tensor], None)
+        if self.aux2 is not None:
+            if self.training:
+                aux2 = self.aux2(x)
+
+        x = self.inception4e(x)
+        # N x 832 x 14 x 14
+        x = self.maxpool4(x)
+        # N x 832 x 7 x 7
+        x = self.inception5a(x)
+        # N x 832 x 7 x 7
+        x = self.inception5b(x)
+        # N x 1024 x 7 x 7
+
+        x = self.avgpool(x)
+        # N x 1024 x 1 x 1
+        x = torch.flatten(x, 1)
+        # N x 1024
+        x = self.dropout(x)
+        x = self.fc(x)
+        # N x 1000 (num_classes)
+        return x, aux2, aux1
+
+    # @torch.jit.unused
+    # # aux2, aux1를 적용한 출력값 반환하기
+    # def eager_outputs(self, x, aux2, aux1):
+    #     # type: #(Tensor, Optional[Tensor], Optional[Tensor]) -> GoogLeNetOutputs
+    #     if self.training and self.aux_logits:
+    #         return _GoogLeNetOutputs(x, aux2, aux1)
+    #     else:
+    #         return x
+    #
+    # def forward(self, x):
+    #     # type: #(Tensor) -> GoogLeNetOutputs
+    #     x = self._transform_input(x)
+    #     x, aux1, aux2 = self._forward(x)
+    #     aux_defined = self.training and self.aux_logits
+    #     if torch.jit.is_scripting():
+    #         if not aux_defined:
+    #             warnings.warn("Scripted GoogleNet always returns GoogleNetOutputs Tuple")
+    #         return GoogLeNetOutputs(x, aux2, aux1)
+    #     else:
+    #         return self.eager_outputs(x, aux2, aux1)
 
 
 class Inception_module(nn.Module):
@@ -67,9 +238,9 @@ class InceptionAux(nn.Module):
         self.fc2 = nn.Linear(1024, num_classes)
 
     def forward(self, x):
-        # aux1: N x 512 x 14 x 14, aux2: N x 526 x 14 x 14
+        # aux1: N x 512 x 14 x 14, aux2: N x 528 x 14 x 14
         x = F.adaptive_avg_pool2d(x, (4, 4))
-        # aux1: N x  512 x 4 x 4, aux2: N x 526 x 4 x 4
+        # aux1: N x  512 x 4 x 4, aux2: N x 528 x 4 x 4
         x = self.conv(x)
         # N x 126 x 4 x 4
         x = torch.flatten(x, 1)
@@ -84,9 +255,6 @@ class InceptionAux(nn.Module):
         return x
 
 
-
-
-
 # 기본 Convolution layer 정의하기 conv2d-bn-relu
 class BasicConv2d(nn.Module):
     def __init__(self, in_channels, out_channels, **kwargs):
@@ -98,3 +266,13 @@ class BasicConv2d(nn.Module):
         x = self.conv(x)
         x = self.bn(x)
         return F.relu(x, inplace=True)
+
+
+
+
+if __name__ == "__main__":
+    from torchsummary import summary
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    net = GoogLeNet(num_classes=1000).to(device)
+    summary(net, (3, 224, 224), 30)
