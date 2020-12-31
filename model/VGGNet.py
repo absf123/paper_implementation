@@ -31,7 +31,7 @@ class VGGNet(nn.Module):
             nn.Dropout(),
             nn.Linear(4096, num_classes)
         )
-
+        # 굳이 model안에 넣을 이유가 있을까? -> train시 net선언하고 그 코드에서 따로 init_weight적용하는 것은?
         if init_weighs:
             self._initialize_weights()
 
