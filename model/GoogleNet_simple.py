@@ -30,7 +30,7 @@ class GoogLeNet(nn.Module):
         inception_aux_block = blocks[2]  # InceptionAux
 
         self.auc_logits = aux_logits
-        self.transfor_input = transform_input
+        self.transform_input = transform_input
 
         self.conv1 = conv_block(3, 64, kernel_size=7, stride=2, padding=3)
         # ceil_mode = True : 천장함수 이용
@@ -204,7 +204,7 @@ class Inception_module(nn.Module):
             # kernel_size=5가 아닌 3인 이유는 오류라고 합니다.
             # 실수로 3으로 설정하여 학습을 했고 5로 바꾸면 다시 학습을 시켜야 하므로
             # 이대로 냅두었다고 설명함
-            conv_block(ch5x5red, ch5x5, kernel_size=3, padding=1)
+            conv_block(ch5x5red, ch5x5, kernel_size=5, padding=1)  # pytorch 문제인듯 paper에 맞게 kernel_size=5로 바꿔보자
         )
 
         self.branch4 = nn.Sequential(
