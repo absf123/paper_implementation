@@ -8,3 +8,8 @@
 2. segmentation or GAN or few-shot learning
 
 3. object detection -> 인프런 강의 참고
+
+
+# 2021.1.9
+
+- Inception-v3 : 미완성(구조는 완성), paper와 torchvision code 구조가 너무 달라서 많이 해맸음, torchvision을 참고해서 적용할 예정
