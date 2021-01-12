@@ -12,8 +12,11 @@ import numpy as np
 from typing import Type, Any, Callable, Union, List, Optional    # 사용 안할 예정 2021.1.10
 
 __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
-           'resnet152', 'resnext50_32x4d', 'resnext101_32x8d',
-           'wide_resnet50_2', 'wide_resnet101_2']
+           'resnet152']
+#
+# __all__ = ['ResNet', 'resnet18', 'resnet34', 'resnet50', 'resnet101',
+#            'resnet152', 'resnext50_32x4d', 'resnext101_32x8d',
+#            'wide_resnet50_2', 'wide_resnet101_2']
 
 model_url = {
     'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
@@ -29,19 +32,20 @@ model_url = {
 
 # Basic Conv layer 생성 : paper에서는 filter가 3x3, 1x1인 conv만 사용
 # dilation은 뭘까?
-def conv3x3(in_planes, out_planes, stride, groups, dilation):
+def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
     """3x3 convolution with padding"""
     conv_3x3 = nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride, padding=dilation, groups=groups, bias=False, dilation=dilation)
     return conv_3x3
 
-def conv1x1(in_planes, out_planes, stride):
+def conv1x1(in_planes, out_planes, stride=1):
     """1x1 convolution, no padding"""
     conv_1x1 = nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
     return conv_1x1
 
-# Basic residual block, resnet18, resnet34
+# Basic residual block, resnet18
 class BasicBlock(nn.Module):
-    def __init__(self, inplanes, planes, stride, downsample=None, groups=1, base_width=64, dilation=1, norm_layer=None):
+    expansion = 1
+    def __init__(self, inplanes, planes, stride=1, downsample=None, groups=1, base_width=64, dilation=1, norm_layer=None):
         super(BasicBlock, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
@@ -52,7 +56,7 @@ class BasicBlock(nn.Module):
         # Both self.conv1 and self.downsample layers downsample the input when stride != 1
         self.conv1 = conv3x3(inplanes, planes, stride)
         self.bn1 = norm_layer(planes)
-        self.relu = F.relu(inplanes=True)
+        self.relu = nn.ReLU(inplace=True)
         self.conv2 = conv3x3(planes, planes)
         self.bn2 = norm_layer(planes)
         self.downsample = downsample
@@ -72,7 +76,7 @@ class BasicBlock(nn.Module):
 
         return out
 
-# resnet50, resnet101, resnet152
+# resnet34, resnet50, resnet101, resnet152
 class Bottleneck(nn.Module):
     # Bottleneck in torchvision places the stride for downsampling at 3x3 convolution(self.conv2)    # stride 주는게 conv2부터라서 paper와 다르다는 걸까?
     # while original implementation places the stride at the first 1x1 convolution(self.conv1)
@@ -82,7 +86,7 @@ class Bottleneck(nn.Module):
 
     expansion = 4
 
-    def __init__(self, inplanes, planes, stride, downsample=None, groups=1, base_width=64, dilation=1, norm_layer=None):
+    def __init__(self, inplanes, planes, stride=1, downsample=None, groups=1, base_width=64, dilation=1, norm_layer=None):
         super(Bottleneck, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
@@ -94,7 +98,7 @@ class Bottleneck(nn.Module):
         self.bn2 = norm_layer(width)
         self.conv3 = conv1x1(width, planes * self.expansion)
         self.bn3 = norm_layer(planes * self.expansion)   # expansion
-        self.relu = F.relu(inplanes=True)
+        self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
         self.stride = stride
 
@@ -167,7 +171,8 @@ class ResNet(nn.Module):
                     nn.init.constant_(m.bn2.weight, 0)
 
     # block 생성, paper에서 conv2_x, conv3_x, conv4_x, conv5_x, Table.1 참고
-   def _make_layer(self, block: Type[Union[BasicBlock, Bottleneck]], planes, blocks, stride=1, dilate=False):
+    # blocks -> 블럭 갯수
+    def _make_layer(self, block: Type[Union[BasicBlock, Bottleneck]], planes, blocks, stride=1, dilate=False):
         norm_layer = self._norm_layer
         downsample = None
         previous_dilation = self.dilation
@@ -181,11 +186,14 @@ class ResNet(nn.Module):
             )
 
         layers = []
-        layers.append(block(self.inplanes, planes, groups=self.groups,
-                            base_width=self.base_width, dilation=self.dilation,
-                            norm_layer=norm_layer))
+        layers.append(block(self.inplanes, planes, stride, downsample, self.groups,
+                            self.base_width, previous_dilation, norm_layer))
+        self.inplanes = planes * block.expansion
+        for _ in range(1, blocks):
+            layers.append(block(self.inplanes, planes, groups=self.groups, base_width=self.base_width, dilation=self.dilation, norm_layer=norm_layer))
 
         return nn.Sequential(*layers)
+
 
     def forward(self, x):
         # See note [torchScript super()]
@@ -211,3 +219,73 @@ def _resnet(arch, block: Type[Union[BasicBlock, Bottleneck]], layers, pretrained
     return model
 
 # 2021.01.10 여기까지
+
+def resnet18(pretrained=False, progress=True, **kwargs):
+    r"""ResNet-18 model from
+    `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_.
+    Args:
+        pretrained (bool): If True, returns a model pre-trained on ImageNet
+        progress (bool): If True, displays a progress bar of the download to stderr
+    """
+    return _resnet('resnet18', BasicBlock, [2,2,2,2], pretrained, progress, **kwargs)
+
+def resnet34(pretrained=False, progress=True, **kwargs):
+    r"""ResNet-50 model from
+    `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_.
+    Args:
+        pretrained (bool): If True, returns a model pre-trained on ImageNet
+        progress (bool): If True, displays a progress bar of the download to stderr
+    """
+    return _resnet('resnet34', BasicBlock, [3,4,6,3], pretrained, progress, **kwargs)
+
+
+def resnet50(pretrained=False, progress=True, **kwargs):
+    r"""ResNet-101 model from
+    `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_.
+    Args:
+        pretrained (bool): If True, returns a model pre-trained on ImageNet
+        progress (bool): If True, displays a progress bar of the download to stderr
+    """
+    return _resnet('resnet50', Bottleneck, [3,4,6,3], pretrained, progress, **kwargs)
+
+def resnet101(pretrained=False, progress=True, **kwargs):
+    r"""ResNet-101 model from
+    `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_.
+    Args:
+        pretrained (bool): If True, returns a model pre-trained on ImageNet
+        progress (bool): If True, displays a progress bar of the download to stderr
+    """
+    return _resnet('resnet101', Bottleneck, [3,4,23,3], pretrained, progress, **kwargs)
+
+def resnet152(pretrained=False, progress=True, **kwargs):
+    r"""ResNet-101 model from
+    `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_.
+    Args:
+        pretrained (bool): If True, returns a model pre-trained on ImageNet
+        progress (bool): If True, displays a progress bar of the download to stderr
+    """
+    return _resnet('resnet152', Bottleneck, [3,8,26,3], pretrained, progress, **kwargs)
+
+# 2021.1.12 여기까지 resnext50_32x4d 부터는 ResNext 논문 읽고 진행
+# def resnext50_32x4d(pretrained=False, progress=True, **kwargs):
+#     r"""ResNet-101 model from
+#     `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_.
+#     Args:
+#         pretrained (bool): If True, returns a model pre-trained on ImageNet
+#         progress (bool): If True, displays a progress bar of the download to stderr
+#     """
+#     kwargs['groups'] = 32
+#     kwargs['width_per_group'] = 4
+#     return _resnet('resnext50_32x4d', Bottleneck, [3,4,6,3], pretrained, progress, **kwargs)
+
+
+if __name__ == "__main__":
+    from torchsummary import summary
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    net = resnet101(num_classes=1000).to(device)
+    summary(net, (3, 224, 224), 2)
+
+
+
+
