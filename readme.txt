@@ -9,8 +9,9 @@
 2021.1.12 -> resnet 끝, 나머지 model은 resnext paper읽고 추가
 2021.1.15 -> MobileNet-v1 구현
 
+2. segmentation or GAN or few-shot learning or NLP
 
-2. segmentation or GAN or few-shot learning
+2021.1.26 -> transformer 코드 실습
 
 3. object detection -> 인프런 강의 참고
 
