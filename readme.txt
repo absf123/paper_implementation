@@ -1,6 +1,6 @@
 # 2020.12.28 ~
 
-1. classification
+1. classification & medical
 - AlexNet, VGG, Inceptionv1-v4, ResNet, DesNet, SENet,...
 2020.12.28 -> AlexNet, VGG16구현
 2020.12.29 -> Inceptionv1-v4구현 -ing    2021.01.05 완성예정, inception
@@ -8,6 +8,8 @@
 2021.1.10 -> resnet 구현 시작 with torchvision, resnet은 계속 구현연습할 것임
 2021.1.12 -> resnet 끝, 나머지 model은 resnext paper읽고 추가
 2021.1.15 -> MobileNet-v1 구현
+
+2021.1.30 -> BrainNetCNN 구조 완성, 실행은 아직X, dataset 구조를 파악 못함
 
 2. segmentation or GAN or few-shot learning or NLP
 
