@@ -33,12 +33,12 @@ def channel_shuffle(x, groups):
     # reshape
     x = x.view(batchsize, groups,
                channels_per_group, height, width, depth)
-
-    x = torch.transpose(x, 1, 2).contiguous()   # ??
-
+    # print(x.shape) # torch.Size([2, 2, 24, 7, 8, 7])
+    x = torch.transpose(x, 1, 2).contiguous()   # x[1], x[2] 바꿈
+    # print(x.shape) # torch.Size([2, 24, 2, 7, 8, 7])
     # flatten
     x = x.view(batchsize, -1, height, width, depth)
-
+    # print(x.shape)  # torch.Size([2, 48, 7, 8, 7]), group=2를 하나로 24->48
     return x
 
 
