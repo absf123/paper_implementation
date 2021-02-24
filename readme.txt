@@ -11,6 +11,8 @@
 
 2021.1.30 -> BrainNetCNN 구조 완성, 실행은 아직X, dataset 구조를 파악 못함
 
+2021.2.24 -> shufflenetv2 3d https://github.com/ericsun99/Shufflenet-v2-Pytorch/blob/master/ShuffleNetV2.py 깃허브 코드를 참고하였습니다
+
 2. segmentation or GAN or few-shot learning or NLP
 
 2021.1.26 -> transformer 코드 실습
